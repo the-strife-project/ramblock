@@ -16,7 +16,7 @@ bool read(std::PID client, uint64_t lba) {
 		return false;
 
 	lock.acquire();
-	if(blocks.find(lba) == blocks.end()) {
+	if(!blocks.has(lba)) {
 		lock.release();
 		memset(buffer, 0, PAGE_SIZE);
 	} else {
@@ -32,7 +32,7 @@ bool write(std::PID client, uint64_t lba) {
 		return false;
 
 	lock.acquire();
-	if(blocks.find(lba) == blocks.end())
+	if(!blocks.has(lba))
 		blocks[lba] = (uint8_t*)std::mmap();
 
 	memcpy(blocks[lba], buffer, PAGE_SIZE);
