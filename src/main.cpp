@@ -3,47 +3,58 @@
 #include <unordered_map>
 #include <mutex>
 
-bool connect(std::PID client, std::SMID smid) {
-	return std::sm::connect(client, smid);
-}
-
 static std::unordered_map<uint64_t, uint8_t*> blocks;
 static std::mutex lock;
 
-bool read(std::PID client, uint64_t lba) {
-	uint8_t* buffer = std::sm::get(client);
-	if(!buffer)
+bool read(std::PID client, std::SMID smid, uint64_t lba) {
+	auto link = std::sm::link(client, smid);
+	size_t npages = link.s;
+	if(!npages)
 		return false;
+	uint8_t* buffer = link.f;
 
 	lock.acquire();
-	if(!blocks.has(lba)) {
-		lock.release();
-		memset(buffer, 0, PAGE_SIZE);
-	} else {
-		memcpy(buffer, blocks[lba], PAGE_SIZE);
-		lock.release();
+	while(npages--) {
+		if(blocks.has(lba))
+			memcpy(buffer, blocks[lba], PAGE_SIZE);
+		else
+			memset(buffer, 0, PAGE_SIZE);
+
+		buffer += PAGE_SIZE;
+		++lba;
 	}
+	lock.release();
+
+	std::sm::unlink(smid);
 	return true;
 }
 
-bool write(std::PID client, uint64_t lba) {
-	uint8_t* buffer = std::sm::get(client);
-	if(!buffer)
+bool write(std::PID client, std::SMID smid, uint64_t lba) {
+	auto link = std::sm::link(client, smid);
+	size_t npages = link.s;
+	if(!npages)
 		return false;
+	uint8_t* buffer = link.f;
 
 	lock.acquire();
-	if(!blocks.has(lba))
-		blocks[lba] = (uint8_t*)std::mmap();
+	while(npages--) {
+		if(!blocks.has(lba))
+			blocks[lba] = (uint8_t*)std::mmap();
 
-	memcpy(blocks[lba], buffer, PAGE_SIZE);
+		memcpy(blocks[lba], buffer, PAGE_SIZE);
+
+		buffer += PAGE_SIZE;
+		++lba;
+	}
 	lock.release();
+
+	std::sm::unlink(smid);
 	return true;
 }
 
 extern "C" void _start() {
-	std::exportProcedure((void*)connect, 1);
-	std::exportProcedure((void*)read, 1);
-	std::exportProcedure((void*)write, 1);
+	std::exportProcedure((void*)read, 2);
+	std::exportProcedure((void*)write, 2);
 	std::enableRPC();
 	std::publish("ramblock");
 	std::halt();
