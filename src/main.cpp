@@ -2,11 +2,15 @@
 #include <rpc>
 #include <unordered_map>
 #include <mutex>
+#include <registry>
 
 static std::unordered_map<uint64_t, uint8_t*> blocks;
 static std::mutex lock;
 
 bool read(std::PID client, std::SMID smid, uint64_t lba) {
+	if(!std::registry::has(client, "RAMBLOCK_READ"))
+		return false;
+
 	auto link = std::sm::link(client, smid);
 	size_t npages = link.s;
 	if(!npages)
@@ -30,6 +34,9 @@ bool read(std::PID client, std::SMID smid, uint64_t lba) {
 }
 
 bool write(std::PID client, std::SMID smid, uint64_t lba) {
+	if(!std::registry::has(client, "RAMBLOCK_WRITE"))
+		return false;
+
 	auto link = std::sm::link(client, smid);
 	size_t npages = link.s;
 	if(!npages)
